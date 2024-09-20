@@ -8,8 +8,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Load and preprocess data
-df = pd.read_csv(
-    'https://drive.google.com/file/d/1oWrArdkJ8fB2rHqCbfGF5FrSy2UDuO9V')
+df = pd.read_csv('bsas_realstate_on_sale_properati_dataset_2020.csv')
 df = df[df["l2"] == "Capital Federal"]
 df = df[(df["property_type"] == "Departamento")
         | (df["property_type"] == "PH")]
