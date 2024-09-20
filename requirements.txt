@@ -115,9 +115,8 @@ soupsieve==2.5
 stack-data==0.6.3
 tensorboard==2.16.2
 tensorboard-data-server==0.7.2
-tensorflow==2.16.0rc0
+tensorflow==2.15.0
 tensorflow-datasets==4.9.4
-tensorflow-intel==2.16.0rc0
 tensorflow-metadata==1.14.0
 termcolor==2.4.0
 threadpoolctl==3.5.0
