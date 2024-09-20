@@ -58,6 +58,13 @@ def calculate_percentage_adjustment(years: int) -> float:
     return percentage
 
 
+app.route('/', methods=['GET'])
+
+
+def home():
+    return 'Hello World!'
+
+
 @app.route('/predict', methods=['POST'])
 def predict():
     data = request.json
