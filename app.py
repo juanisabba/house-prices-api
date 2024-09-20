@@ -8,26 +8,39 @@ from sklearn.preprocessing import StandardScaler
 app = Flask(__name__)
 CORS(app)
 
-# Load and preprocess data
-df = pd.read_csv('https://www.dropbox.com/scl/fi/qzln61nb6q2ysxybnrufj/bsas_realstate_on_sale_properati_dataset_2020.csv?rlkey=le0z3sbq2kyl0xgpszmmt6bt4&st=wc5vrrqw&dl=1')
-df = df[df["l2"] == "Capital Federal"]
-df = df[(df["property_type"] == "Departamento")
-        | (df["property_type"] == "PH")]
-df.loc[df['l3'] == 'Catalinas', 'l3'] = 'Retiro'
-df.loc[df['l3'] == 'Barrio Norte', 'l3'] = 'Recoleta'
-df.loc[df['l3'] == 'Centro / Microcentro', 'l3'] = 'San Nicolás'
-df.loc[df['l3'] == 'Congreso', 'l3'] = 'Balvanera'
-df.loc[df['l3'] == 'Las Cañitas', 'l3'] = 'Palermo'
-df.loc[df['l3'] == 'Once', 'l3'] = 'Balvanera'
-df.loc[df['l3'] == 'Parque Centenario', 'l3'] = 'Villa Crespo'
-df.loc[df['l3'] == 'Tribunales', 'l3'] = 'San Nicolás'
-df = df[df['rooms'] < 7]
-df = df[df['bedrooms'] < 6]
-df = df[df['bathrooms'] < 6]
-df.dropna(inplace=True)
-df = df.drop(columns=["start_date", "end_date", "created_on", "l1",
-             "l2", "currency", "title", "description", "operation_type"])
-df = pd.get_dummies(df, columns=["l3", "property_type"], drop_first=True)
+# Load and preprocess data in chunks
+url = 'https://www.dropbox.com/scl/fi/qzln61nb6q2ysxybnrufj/bsas_realstate_on_sale_properati_dataset_2020.csv?rlkey=le0z3sbq2kyl0xgpszmmt6bt4&st=wc5vrrqw&dl=1'
+chunksize = 10000  # Define the chunk size
+
+chunk_list = []  # Create an empty list to hold the chunks
+
+for chunk in pd.read_csv(url, chunksize=chunksize):
+    # Filter data within the chunk
+    chunk = chunk[chunk["l2"] == "Capital Federal"]
+    chunk = chunk[(chunk["property_type"] == "Departamento")
+                  | (chunk["property_type"] == "PH")]
+    chunk.loc[chunk['l3'] == 'Catalinas', 'l3'] = 'Retiro'
+    chunk.loc[chunk['l3'] == 'Barrio Norte', 'l3'] = 'Recoleta'
+    chunk.loc[chunk['l3'] == 'Centro / Microcentro', 'l3'] = 'San Nicolás'
+    chunk.loc[chunk['l3'] == 'Congreso', 'l3'] = 'Balvanera'
+    chunk.loc[chunk['l3'] == 'Las Cañitas', 'l3'] = 'Palermo'
+    chunk.loc[chunk['l3'] == 'Once', 'l3'] = 'Balvanera'
+    chunk.loc[chunk['l3'] == 'Parque Centenario', 'l3'] = 'Villa Crespo'
+    chunk.loc[chunk['l3'] == 'Tribunales', 'l3'] = 'San Nicolás'
+    chunk = chunk[chunk['rooms'] < 7]
+    chunk = chunk[chunk['bedrooms'] < 6]
+    chunk = chunk[chunk['bathrooms'] < 6]
+    chunk.dropna(inplace=True)
+    chunk = chunk.drop(columns=["start_date", "end_date", "created_on", "l1",
+                                "l2", "currency", "title", "description", "operation_type"])
+    chunk = pd.get_dummies(
+        chunk, columns=["l3", "property_type"], drop_first=True)
+
+    # Append the processed chunk to the list
+    chunk_list.append(chunk)
+
+# Concatenate all chunks into a single DataFrame
+df = pd.concat(chunk_list)
 
 # Define feature matrix and target vector
 X = df.drop(['price'], axis=1)
@@ -59,9 +72,7 @@ def calculate_percentage_adjustment(years: int) -> float:
     return percentage
 
 
-app.route('/', methods=['GET'])
-
-
+@app.route('/', methods=['GET'])
 def home():
     return 'Hello World!'
 
@@ -150,6 +161,7 @@ def predict():
             data['l3']) + 1  # 1-based index
     except KeyError:
         return jsonify({'error': f'Neighborhood {data["l3"]} not found in the rankings'}), 400
+
     # Return prediction, average price for the requested neighborhood, and its rank position
     return jsonify({
         'predicted_price': round(prediction[0]),
@@ -161,6 +173,5 @@ def predict():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print('Starting Flask API server port:', port)
-    # Get the port from the environment (useful for deployment), otherwise default to 5000
-    app.run(debug=True, host='0.0.0.0', port=port | 5000)
+    print('Starting Flask API server on port:', port)
+    app.run(debug=True, host='0.0.0.0', port=port)
