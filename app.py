@@ -12,35 +12,43 @@ CORS(app)
 url = 'https://www.dropbox.com/scl/fi/qzln61nb6q2ysxybnrufj/bsas_realstate_on_sale_properati_dataset_2020.csv?rlkey=le0z3sbq2kyl0xgpszmmt6bt4&st=wc5vrrqw&dl=1'
 chunksize = 10000  # Define the chunk size
 
-chunk_list = []  # Create an empty list to hold the chunks
+# Create an empty list to hold processed chunks (in memory optimized way)
+chunk_list = []  
 
 for chunk in pd.read_csv(url, chunksize=chunksize):
     # Filter data within the chunk
     chunk = chunk[chunk["l2"] == "Capital Federal"]
-    chunk = chunk[(chunk["property_type"] == "Departamento")
-                  | (chunk["property_type"] == "PH")]
-    chunk.loc[chunk['l3'] == 'Catalinas', 'l3'] = 'Retiro'
-    chunk.loc[chunk['l3'] == 'Barrio Norte', 'l3'] = 'Recoleta'
-    chunk.loc[chunk['l3'] == 'Centro / Microcentro', 'l3'] = 'San Nicolás'
-    chunk.loc[chunk['l3'] == 'Congreso', 'l3'] = 'Balvanera'
-    chunk.loc[chunk['l3'] == 'Las Cañitas', 'l3'] = 'Palermo'
-    chunk.loc[chunk['l3'] == 'Once', 'l3'] = 'Balvanera'
-    chunk.loc[chunk['l3'] == 'Parque Centenario', 'l3'] = 'Villa Crespo'
-    chunk.loc[chunk['l3'] == 'Tribunales', 'l3'] = 'San Nicolás'
+    chunk = chunk[(chunk["property_type"] == "Departamento") | (chunk["property_type"] == "PH")]
+    
+    # Recode neighborhood values directly
+    chunk['l3'] = chunk['l3'].replace({
+        'Catalinas': 'Retiro', 
+        'Barrio Norte': 'Recoleta',
+        'Centro / Microcentro': 'San Nicolás', 
+        'Congreso': 'Balvanera',
+        'Las Cañitas': 'Palermo', 
+        'Once': 'Balvanera',
+        'Parque Centenario': 'Villa Crespo', 
+        'Tribunales': 'San Nicolás'
+    })
+    
+    # Apply further filters
     chunk = chunk[chunk['rooms'] < 7]
     chunk = chunk[chunk['bedrooms'] < 6]
     chunk = chunk[chunk['bathrooms'] < 6]
     chunk.dropna(inplace=True)
-    chunk = chunk.drop(columns=["start_date", "end_date", "created_on", "l1",
-                                "l2", "currency", "title", "description", "operation_type"])
-    chunk = pd.get_dummies(
-        chunk, columns=["l3", "property_type"], drop_first=True)
+
+    # Drop unnecessary columns before encoding and processing
+    chunk = chunk.drop(columns=["start_date", "end_date", "created_on", "l1", "l2", "currency", "title", "description", "operation_type"])
+
+    # One-hot encode categorical columns
+    chunk = pd.get_dummies(chunk, columns=["l3", "property_type"], drop_first=True)
 
     # Append the processed chunk to the list
     chunk_list.append(chunk)
 
-# Concatenate all chunks into a single DataFrame
-df = pd.concat(chunk_list)
+# Concatenate all processed chunks into a single DataFrame (use `concat` only once)
+df = pd.concat(chunk_list, ignore_index=True)
 
 # Define feature matrix and target vector
 X = df.drop(['price'], axis=1)
@@ -57,7 +65,6 @@ forest.fit(X_scaled, y)
 # Define all possible feature columns based on the training data
 all_feature_columns = X.columns.tolist()
 
-
 def calculate_percentage_adjustment(years: int) -> float:
     if years == 0:
         return 0.05
@@ -67,15 +74,12 @@ def calculate_percentage_adjustment(years: int) -> float:
         return -0.05
     elif years >= 60:
         return -0.1
-
     percentage = 0.05 - (years * 0.1 / 30)
     return percentage
-
 
 @app.route('/', methods=['GET'])
 def home():
     return 'Hello World!'
-
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -87,15 +91,13 @@ def predict():
     # Process categorical data (l3 and property_type)
     if 'l3' in data:
         l3_value = data['l3']
-        l3_columns = [
-            col for col in all_feature_columns if col.startswith('l3_')]
+        l3_columns = [col for col in all_feature_columns if col.startswith('l3_')]
         if f'l3_{l3_value}' in l3_columns:
             features[f'l3_{l3_value}'] = 1
 
     if 'property_type' in data:
         property_type_value = data['property_type']
-        property_type_columns = [
-            col for col in all_feature_columns if col.startswith('property_type_')]
+        property_type_columns = [col for col in all_feature_columns if col.startswith('property_type_')]
         if f'property_type_{property_type_value}' in property_type_columns:
             features[f'property_type_{property_type_value}'] = 1
 
@@ -130,8 +132,7 @@ def predict():
         # Use .copy() to avoid SettingWithCopyWarning
         neighborhood_df = df[df[neighborhood_col] == 1].copy()
         # Calculate price per m² for the neighborhood
-        neighborhood_df.loc[:, 'price_per_m2'] = neighborhood_df['price'] / \
-            neighborhood_df['surface_total']
+        neighborhood_df.loc[:, 'price_per_m2'] = neighborhood_df['price'] / neighborhood_df['surface_total']
         average_m2_price = neighborhood_df['price_per_m2'].mean()
     else:
         return jsonify({'error': f'Neighborhood {data["l3"]} not found'}), 400
@@ -142,23 +143,18 @@ def predict():
 
     # Iterate over one-hot encoded neighborhood columns
     for neighborhood in neighborhood_columns:
-        neighborhood_df = df[df[neighborhood]
-                             == 1].copy()  # Use .copy() here too
+        neighborhood_df = df[df[neighborhood] == 1].copy()  # Use .copy() here too
         # Calculate price per m² for each neighborhood
-        neighborhood_df.loc[:, 'price_per_m2'] = neighborhood_df['price'] / \
-            neighborhood_df['surface_total']
+        neighborhood_df.loc[:, 'price_per_m2'] = neighborhood_df['price'] / neighborhood_df['surface_total']
         avg_m2_price = neighborhood_df['price_per_m2'].mean()
-        neighborhood_avg_m2_price_dict[neighborhood.replace(
-            'l3_', '')] = avg_m2_price
+        neighborhood_avg_m2_price_dict[neighborhood.replace('l3_', '')] = avg_m2_price
 
     # Sort by price per m² (most expensive to cheapest)
-    sorted_neighborhood_avg_m2_price = pd.Series(
-        neighborhood_avg_m2_price_dict).sort_values(ascending=False)
+    sorted_neighborhood_avg_m2_price = pd.Series(neighborhood_avg_m2_price_dict).sort_values(ascending=False)
 
     # Get the rank/position of the selected neighborhood
     try:
-        neighborhood_position = sorted_neighborhood_avg_m2_price.index.get_loc(
-            data['l3']) + 1  # 1-based index
+        neighborhood_position = sorted_neighborhood_avg_m2_price.index.get_loc(data['l3']) + 1  # 1-based index
     except KeyError:
         return jsonify({'error': f'Neighborhood {data["l3"]} not found in the rankings'}), 400
 
@@ -169,7 +165,6 @@ def predict():
         'neighborhood': data['l3'],
         'neighborhood_position': neighborhood_position
     })
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
